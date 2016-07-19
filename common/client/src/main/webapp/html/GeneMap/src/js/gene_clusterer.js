@@ -19,10 +19,11 @@ GENEMAP.GeneClusterer = function (userConfig) {
 
     //Use precanned algorithm for clustering
     //It return list of lists of midpoints
-    clusterPointsList = ss.ckmeans(genes.map(function (d) {
-        return d.midpoint;
-      }),
-      Math.min(config.nClusters, genes.length));
+    var midpoints = genes.map(function (d) { return d.midpoint; });
+    var nClusters = Math.min(config.nClusters, genes.length) ;
+    log.info( midpoints);
+    log.info( nClusters);
+    clusterPointsList = ss.ckmeans(midpoints, nClusters);
 
     //Start with all the clusters empty
     var clusterList = [];

@@ -137,7 +137,7 @@ onZoom = function () {
   // re-draw the map if scale has changed
   if( zoom.scale() != lastZoomScale){
     log.trace( "New zoom");
-    computeGeneLayout();
+    computeGeneLayout({computeGeneBandClusters : true});
     drawMap();
   }
   lastZoomScale = zoom.scale();
@@ -262,6 +262,14 @@ onZoom = function () {
         return gene.selected;});
     } );
 
+    var oldState = menuManager.getTagButtonState();
+    if ( oldState == "hide" )
+    {
+      newState = "show";
+      setGeneLabelState(newState);
+      menuManager.setTabButtonState(newState);
+    }
+
     computeGeneLayout();
     drawMap();
 
@@ -276,7 +284,9 @@ onZoom = function () {
     else{
       genome = { chromosomes : [chromosome] };
       singleGenomeView = true
+      resetMapZoom();
     }
+
     computeGeneLayout();
     drawMap()
   };
@@ -346,9 +356,16 @@ onZoom = function () {
     genome = layoutDecorator.decorateGenome(genome);
   }
 
-  var computeGeneLayout = function() {
+  var computeGeneLayout = function(userOptions) {
+
+    var defaultOptions = {
+      computeGeneBandClusters: false,
+      computeAnnotationClusters: false,
+    }
+
+    var options = _.merge({}, defaultOptions, userOptions);
+
     decorateGenomeLayout();
-    var doCluster = genome.chromosomes.length > 1;
 
     var geneAnnotationLayout = GENEMAP.GeneAnnotationLayout( {
         longestChromosome: genome.cellLayout.longestChromosome,
@@ -372,13 +389,13 @@ onZoom = function () {
     genome.chromosomes.forEach( function(chromosome){
       chromosome.layout = chromosome.layout || {};
 
-      if( ! chromosome.layout.annotationDisplayClusters ) {
+      if( ! chromosome.layout.annotationDisplayClusters || options.computeAnnotationClusters ) {
         geneAnnotationLayout.computeChromosomeClusters(chromosome);
       }
       geneAnnotationLayout.layoutChromosome(chromosome);
 
 
-      if( ! chromosome.layout.geneBandDisplayClusters ) {
+      if( ! chromosome.layout.geneBandDisplayClusters || options.computeGeneBandClusters ) {
         geneBandLayout.computeChromosomeClusters(chromosome);
       }
       geneBandLayout.layoutChromosome(chromosome);

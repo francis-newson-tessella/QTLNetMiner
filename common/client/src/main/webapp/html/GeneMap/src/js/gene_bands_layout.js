@@ -34,41 +34,21 @@ GENEMAP.GeneBandsLayout = function (userConfig) {
 
 
   var createNode = function(cluster){
+
+    result = _.pick(cluster, 'start', 'end', 'midpoint', 'color');
+    result.data = cluster;
+
     if (cluster.type == "gene") {
-      var gene = cluster;
-
-      result = {
-        start : gene.start,
-        end : gene.end,
-        midpoint : gene.midpoint,
-        color : gene.color,
-        data : gene
-      };
-
-      return result;
+      result.color = cluster.color;
     }
     else if (cluster.type == "geneslist"){
-      maxPosition = cluster.genesList.reduce( function(max,current){
-        return Math.max(max, current.end);
-      }, 0);
-      minPosition = cluster.genesList.reduce( function(min,current){
-        return Math.min(min, current.start);
-      }, Infinity);
-
-      result = {
-        start : minPosition,
-        end : maxPosition,
-        midpoint : cluster.midpoint,
-        color : "#0000FF",
-        data : cluster
-      };
-
-      return result;
-      }
+      result.color = '#0000FF';
+    }
     else{
       log.error( "unregconized cluster type");
       log.info( cluster);
     }
+      return result;
   }
 
   var generateChromosomeLayout = function(chromosome){
@@ -81,22 +61,32 @@ GENEMAP.GeneBandsLayout = function (userConfig) {
 
   }
 
-//Produce list of clusters (which could be single genes)
-//for a given chromosome
-  var generateChromosomeClusters = function(chromosome) {
+  var mergeGenes = function( genes){
+    var id = genes.reduce(function (sum, current) {
+      return sum + current.id.toString();
+    }, "");
 
-    var genes = chromosome.annotations.allGenes.slice();
-    genes.sort(function (lhs, rhs) {
-        return lhs.midpoint - rhs.midpoint
-      });
+    var end =  genes.reduce( function(max,current){
+      return Math.max(max, current.end);
+    }, 0);
+    var start = genes.reduce( function(min,current){
+      return Math.min(min, current.start);
+    }, Infinity);
 
-    if ( false && chromosome.number == "2B") {
-      log.info( "GENES");
-      genes.forEach(function (c) {
-        log.info(c.type, c.midpoint)
-      })
-    }
+    var midpoint = (start + end)  /2;
 
+    var resultCluster = {
+      type: "geneslist",
+      id: id,
+      genesList: genes,
+      start: start,
+      midpoint: midpoint,
+      end: end,
+    };
+    return resultCluster;
+  }
+
+  var mergeIdenticalPositions = function (genes){
     var geneClusters = [];
 
     var iGene = 0;
@@ -114,31 +104,83 @@ GENEMAP.GeneBandsLayout = function (userConfig) {
       }
       else {
         var genesList = genes.slice(iGene, iDiff);
-        var id = genesList.reduce(function (sum, current) {
-          return sum + current.id.toString();
-        }, "");
-
-        var genesCollection = {
-          genesList: genesList,
-          midpoint: genesList[0].midpoint,
-          type: "geneslist",
-          id: id,
-        };
-        geneClusters.push(genesCollection);
+        var mergedCluster = mergeGenes(genesList);
+        geneClusters.push(mergedCluster);
         iGene = iDiff;
       }
     }
+    return geneClusters;
+  }
+
+  var mergeNearbyClusters = function(rawClusters, threshold){
+    var clusters = rawClusters.slice();
+
+
+    while( true){
+
+      if (clusters.length < 2){
+        break;
+      }
+
+      var minDistance = Infinity;
+      var iMin = 0;
+      var jMin = 0;
+
+      //Find min clusters
+      for ( var iClus = 0 ; iClus < clusters.length ; iClus++ ){
+        for( var jClus = 0 ; jClus < iClus ; jClus++ ){
+          var iCluster = clusters[iClus];
+          var jCluster = clusters[jClus];
+          var distance = Math.abs(iCluster.midpoint - jCluster.midpoint);
+
+          if (distance < minDistance){
+            iMin = iClus;
+            jMin = jClus;
+            minDistance = distance;
+          }
+        }
+      }
+
+      if (minDistance > threshold){
+        break;
+      }
+
+      //Merge clusters
+      var iCluster = clusters[iMin];
+      var jCluster = clusters[jMin];
+      var iGenes = ( ( iCluster.type  == "geneslist" ) ? iCluster.genesList.slice() : [iCluster]);
+      var jGenes = ( ( jCluster.type  == "geneslist" ) ? jCluster.genesList.slice() : [jCluster]);
+      var newGenes = iGenes.concat(jGenes);
+      var newCluster = mergeGenes(newGenes);
+
+      clusters.splice(iMin, 1);
+      clusters.splice(jMin, 1);
+      clusters.push(newCluster);
+
+    }
+
+    return clusters;
+  }
+
+//Produce list of clusters (which could be single genes)
+//for a given chromosome
+  var generateChromosomeClusters = function(chromosome) {
+    log.info( "generateChromosomeClusters");
+
+    var genes = chromosome.annotations.allGenes.slice();
+    genes.sort(function (lhs, rhs) {
+        return lhs.midpoint - rhs.midpoint
+      });
+
+    geneClusters = mergeIdenticalPositions(genes);
+
+    minClusterSeparation = config.longestChromosome / config.layout.height ;
+    geneClusters = mergeNearbyClusters( geneClusters, minClusterSeparation);
 
     geneClusters.sort(function (lhs, rhs) {
       return lhs.midpoint < rhs.midpoint
     });
 
-    if ( false && chromosome.number == "2B") {
-      log.info( "CLUSTERS");
-      geneClusters.forEach(function (c) {
-        log.info(c.type, c.midpoint)
-      })
-    }
     return geneClusters;
   }
 
